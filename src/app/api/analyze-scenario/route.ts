@@ -38,7 +38,6 @@ ${JSON.stringify(scenario)}`
         });
 
         const raw = result.response.text();
-        console.log(raw, 'akjfksaljflsfskajlsfsfksfjlsajfsjkl')
         const parsed = JSON.parse(raw)
 
         return NextResponse.json({ data: parsed });

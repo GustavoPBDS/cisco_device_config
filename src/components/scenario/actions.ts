@@ -9,5 +9,5 @@ export const analyzeScenario = async (scenario: Array<Record<string, string>>) =
     })
     const response = await res.json()
 
-    return response
+    return response.data
 }

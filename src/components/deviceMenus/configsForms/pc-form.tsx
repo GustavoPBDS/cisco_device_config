@@ -25,9 +25,9 @@ export default function PcForm({ node, onClose }: IProps) {
         if (node) {
             const temp = devices.get(node.id)
             setDevice(temp)
-            setIpv4Mask(temp?.config?.ipv4Mask!)
-            setIpv4Mode(temp?.config?.ipv4Mode!)
-            setIpv4(temp?.config?.ipv4!)
+            setIpv4Mode(temp?.config?.ipv4Mode ?? "static");
+            setIpv4(temp?.config?.ipv4 ?? "");
+            setIpv4Mask(temp?.config?.ipv4Mask ?? "");
         }
     }, [node, devices])
 

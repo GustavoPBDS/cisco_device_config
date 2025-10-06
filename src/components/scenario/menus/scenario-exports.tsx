@@ -75,7 +75,7 @@ export default function ExportScenarioComponent({ onClose, configurations }: IPr
             <div className="flex items-center justify-between z-20 pb-2">
                 <Tabs.Root
                     value={selectedDevice || ''}
-                    onValueChange={setSelectedDevice} // Simplificado: a mudança de aba já atualiza o estado com o label
+                    onValueChange={setSelectedDevice}
                     className="overflow-x-auto overflow-y-hidden
                         scrollbar-thumb-rounded-full scrollbar-track-rounded-full scrollbar scrollbar-thumb-slate-500 scrollbar-track-transparent
                     "
@@ -121,7 +121,7 @@ export default function ExportScenarioComponent({ onClose, configurations }: IPr
                             className="absolute bottom-2.5 right-8 py-1 px-3 w-fit bg-green-500 rounded-md cursor-pointer hover:opacity-90 flex items-center gap-1 text-sm disabled:bg-gray-500 disabled:cursor-not-allowed"
                         >
                             Copiar Configuração
-                            <ClipboardCopy size={16} />
+                            <ClipboardCopy />
                         </button>
                     </footer>
                 </div>

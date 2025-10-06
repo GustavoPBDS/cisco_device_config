@@ -3,9 +3,17 @@ import { analyzeScenario } from "./actions"
 import { useState } from "react"
 import ExportScenarioComponent from "./menus/scenario-exports"
 import { stringify } from "querystring"
+import AnalyzeContainer from "./menus/analyze-container"
 
 interface IProps {
 
+}
+
+export interface IAnalyzeJsonParsed {
+    device: string;
+    problemas: string[];
+    melhorias: string[];
+    resumo: string;
 }
 
 export default function ScenarioActionsContainer({ }: IProps) {
@@ -13,6 +21,8 @@ export default function ScenarioActionsContainer({ }: IProps) {
     const { devices, exportConfig } = useScenario()
 
     const [showConfigs, setShowConfigs] = useState<{ visible: boolean; configs: Record<string, string>[] }>({ visible: false, configs: [] })
+
+    const [showAnalyze, setShowAnalyze] = useState(false)
 
 
     const exportScenarioConfig = () => {
@@ -30,7 +40,7 @@ export default function ScenarioActionsContainer({ }: IProps) {
 
         const res = await analyzeScenario(scenario)
 
-        console.log(res)
+        return res as IAnalyzeJsonParsed[]
     }
 
     const handleExportScenarioClick = () => {
@@ -38,20 +48,35 @@ export default function ScenarioActionsContainer({ }: IProps) {
 
         setShowConfigs({ visible: true, configs })
     }
+    const handleCloseExport = () => {
+        setShowConfigs({ visible: false, configs: [] })
+    }
+    const handleCloseAnalyze = () => {
+        setShowAnalyze(false)
+    }
+
+    const handleOpenExport = () => {
+        handleCloseAnalyze()
+        handleExportScenarioClick()
+    }
+    const handleOpenAnalyze = () => {
+        handleCloseExport()
+        setShowAnalyze(true)
+    }
 
     return (
         <div
             className="fixed z-[5] top-2 right-2 flex items-center gap-2"
         >
             <button
-                onClick={handleExportScenarioClick}
+                onClick={handleOpenExport}
                 className="
                     cursor-pointer bg-sky-500 px-3 py-1.5 w-fit rounded-md font-semibold text-sm *:
                     hover:scale-95
                 "
             >Exportar Cenário</button>
             <button
-                onClick={handleAnalyzeScenario}
+                onClick={handleOpenAnalyze}
                 className="
                     cursor-pointer bg-sky-500 px-3 py-1.5 w-fit rounded-md font-semibold text-sm *:
                     hover:scale-95
@@ -59,8 +84,12 @@ export default function ScenarioActionsContainer({ }: IProps) {
             >Analisar Cenário</button>
 
             {showConfigs.visible && showConfigs.configs && <ExportScenarioComponent
-                onClose={() => setShowConfigs({ visible: false, configs: [] })}
+                onClose={handleCloseExport}
                 configurations={showConfigs.configs}
+            />}
+            {showAnalyze && <AnalyzeContainer
+                onClose={handleCloseAnalyze}
+                handleAnalyzeScenario={handleAnalyzeScenario}
             />}
         </div>
     )

@@ -1,5 +1,6 @@
 'use client'
 
+import { IAnalyzeJsonParsed } from "@/components/scenario/actionsContainer"
 import { NetworkDeviceData } from "@/interfaces/devices"
 import { getNetworkInfo, ipToLong, longToIp } from "@/utils/calcs-ips"
 import { exportPcConfig, exportRouterConfig, exportSwitchConfig } from "@/utils/exportsFunctions"
@@ -72,6 +73,9 @@ interface IScenarioContext {
 
     requestDhcpLease: (pcId: string, router: NetworkDeviceData, vlanId: string) => { assignedIp: string, subnetMask: string } | null;
     releaseDhcpLease: (pcId: string) => void;
+
+    analysisResult: IAnalyzeJsonParsed[] | undefined;
+    storeAnalysisResult: (result: IAnalyzeJsonParsed[] | undefined) => void;
 }
 const ScenarioContext = createContext({} as IScenarioContext)
 
@@ -79,6 +83,13 @@ export function ScenarioContextProvider({ children }: { children: ReactNode }) {
     const [devices, setDevices] = useState<Map<string, NetworkDeviceData>>(initialDevices)
 
     const [dhcpLeases, setDhcpLeases] = useState<Map<string, Map<string, string>>>(new Map());
+
+    const [analysisResult, setAnalysisResult] = useState<IAnalyzeJsonParsed[] | undefined>();
+
+    // --- ADICIONAR ESTA FUNÇÃO ---
+    const storeAnalysisResult = (result: IAnalyzeJsonParsed[] | undefined) => {
+        setAnalysisResult(result);
+    };
 
     const getUniqueLabel = (type: string, devicesMap: Map<string, NetworkDeviceData>) => {
         const existingLabels = Array.from(devicesMap.values())
@@ -394,7 +405,8 @@ export function ScenarioContextProvider({ children }: { children: ReactNode }) {
         <ScenarioContext.Provider value={{
             devices, addPc, addRouter, addSwitch, removeDevice, connectDevices,
             disconnectDevices, updateDeviceConfig, exportConfig,
-            releaseDhcpLease, requestDhcpLease
+            releaseDhcpLease, requestDhcpLease, analysisResult,
+            storeAnalysisResult
         }}>
             {children}
         </ScenarioContext.Provider>
