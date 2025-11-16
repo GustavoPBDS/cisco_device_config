@@ -35,7 +35,7 @@ interface IProps {
         sourceNodeId: string | null;
         sourceNodePort: string | null;
     }>>
-    setNodes: React.Dispatch<React.SetStateAction<Node<NetworkDeviceData | undefined, string | undefined>[]>>
+    setNodes: React.Dispatch<React.SetStateAction<Node<NetworkDeviceData, string | undefined>[]>>
 }
 
 export default function MenuDevice({ node, setEdges, edges, setMenu, menu, mousePosition, menuPorts, setMenuPorts, connectionState, setConnectionState, setNodes }: IProps) {

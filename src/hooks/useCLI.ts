@@ -1,10 +1,121 @@
 import { IChannelGroup } from "@/components/deviceMenus/configsForms/switch-form";
 import { useScenario } from "@/contexts/scenario.context";
-import { NetworkDeviceData, IPortModes } from "@/interfaces/devices";
+import { IAccessList, IAclRule, IOspfConfig, IStaticRoute, NetworkDeviceData, IPortModes, IBgpConfig, IBgpNeighbor } from "@/interfaces/devices";
 import { useEffect, useState } from "react";
 import { Node } from "reactflow";
 
-type CliMode = 'exec' | 'privileged' | 'config' | 'config-vlan' | 'config-if' | 'config-subif';
+// --- ATUALIZADO: Adicionado novos modos de configuração ---
+type CliMode = 'exec' | 'privileged' | 'config' | 'config-vlan' | 'config-if' | 'config-subif' | 'config-router' | 'config-std-nacl' | 'config-router-bgp';
+
+type CommandTree = { [key: string]: CommandTree | null };
+
+const commands: Record<CliMode, CommandTree> = {
+    'exec': {
+        'enable': null,
+    },
+    'privileged': {
+        'disable': null,
+        'configure': {
+            'terminal': null
+        },
+        'show': {
+            'running-config': null,
+            'ip': {
+                'route': null,
+                'ospf': null,
+                'access-lists': null
+            }
+        }
+    },
+    'config': {
+        'hostname': null,
+        'interface': null,
+        'vlan': null,
+        'spanning-tree': {
+            'mode': {
+                'rapid-pvst': null
+            },
+            'vlan': null,
+        },
+        // --- NOVO: Comandos de config global ---
+        'router': {
+            'ospf': null
+        },
+        'ip': {
+            'route': null,
+        },
+        'access-list': null,
+        'exit': null,
+    },
+    'config-vlan': {
+        'name': null,
+        'exit': null
+    },
+    'config-if': {
+        'shutdown': null,
+        'description': null,
+        'ip': {
+            'address': null,
+            'add': null
+        },
+        'switchport': {
+            'mode': {
+                'access': null,
+                'trunk': null
+            },
+            'access': {
+                'vlan': null
+            },
+            'trunk': {
+                'native': {
+                    'vlan': null
+                },
+                'allowed': {
+                    'vlan': {
+                        'address': null,
+                        'remove': null
+                    }
+                }
+            }
+        },
+        'spanning-tree': {
+            'portfast': null,
+            'bpduguard': {
+                'enable': null
+            }
+        },
+        'channel-group': null,
+        'exit': null
+    },
+    'config-subif': {
+        'shutdown': null,
+        'shut': null,
+        'description': null,
+        'desc': null,
+        'encapsulation': {
+            'dot1q': null,
+        },
+        'ip': {
+            'address': null,
+            'add': null
+        },
+        'exit': null
+    },
+    // --- NOVO: Modos de configuração OSPF e ACL ---
+    'config-router': {
+        'network': null,
+        'exit': null,
+    },
+    'config-std-nacl': {
+        'permit': null,
+        'deny': null,
+        'exit': null
+    },
+    'config-router-bgp': {
+        'neighbor': null,
+        'exit': null,
+    }
+}
 
 export default function useCiscoCli(node: Node<NetworkDeviceData>) {
     const { devices, updateDeviceConfig } = useScenario()
@@ -15,57 +126,65 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
     const [historyIndex, setHistoryIndex] = useState(-1);
     const [mode, setMode] = useState<CliMode>('exec');
     const [hostname, setHostname] = useState(device?.config?.hostname || device?.label || "Device");
+
+    // --- ATUALIZADO: Novos estados para sub-modos ---
     const [currentInterface, setCurrentInterface] = useState<string | null>(null);
     const [currentVlanId, setCurrentVlanId] = useState<string | null>(null)
+    const [currentOspfProcessId, setCurrentOspfProcessId] = useState<string | null>(null);
+    const [currentAclId, setCurrentAclId] = useState<string | null>(null);
+    const [currentBgpAs, setCurrentBgpAs] = useState<string | null>(null)
+
 
     useEffect(() => {
         if (node) {
             setHostname(node.data?.config?.hostname || node.data?.label || "Device");
             setMode('exec');
             setCurrentInterface(null);
+            setCurrentVlanId(null);
+            setCurrentOspfProcessId(null);
+            setCurrentBgpAs(null);
+            setCurrentAclId(null);
             setLines(["Welcome to Cisco CLI Simulator."]);
             setHistory([]);
             setHistoryIndex(-1);
         }
-    }, [node?.id]); // A dependência agora é o ID, que é estável.
+    }, [node?.id]);
 
-    // Efeito 2: Responsável por SINCRONIZAR o hostname no prompt.
-    // Dispara se o hostname for alterado em outro lugar (ex: formulário).
     useEffect(() => {
         if (device) {
             setHostname(device.config?.hostname || device.label || "Device");
         }
-    }, [device?.config?.hostname, device?.label]); // Depende apenas das strings do hostname/label.
+    }, [device?.config?.hostname, device?.label]);
 
 
     function prompt() {
         if (!device) return '> ';
+        // --- ATUALIZADO: Prompt para novos modos ---
         const modeSymbol: Record<CliMode, string> = {
             'exec': '>',
             'privileged': '#',
             'config': '(config)#',
             'config-vlan': '(config-vlan)#',
             'config-if': '(config-if)#',
-            'config-subif': '(config-subif)#'
+            'config-subif': '(config-subif)#',
+            'config-router': '(config-router)#',
+            'config-std-nacl': '(config-std-nacl)#',
+            'config-router-bgp': '(config-router-bgp)#'
         };
         return `${hostname}${modeSymbol[mode]} `;
     }
 
-    // Converte atalhos (g0/0) para nomes completos (GigabitEthernet0/0)
     function expandInterfaceName(shortcut: string): string | null {
         if (!device) return null;
-
-        // 1. Separa a parte física da sub-interface
         const subInterfaceParts = shortcut.split('.');
-        const physicalShortcut = subInterfaceParts[0]; // ex: "g0/1"
-        const subInterfaceId = subInterfaceParts.length > 1 ? subInterfaceParts[1] : null; // ex: "10" ou null
+        const physicalShortcut = subInterfaceParts[0];
+        const subInterfaceId = subInterfaceParts.length > 1 ? subInterfaceParts[1] : null;
 
-        // 2. Expande APENAS a parte física
         const firstDigitIndex = physicalShortcut.search(/\d/);
-        if (firstDigitIndex === -1) return null; // Atalho inválido
+        if (firstDigitIndex === -1) return null;
 
-        const letterPart = physicalShortcut.substring(0, firstDigitIndex).toLowerCase(); // ex: "g"
-        const numberPart = physicalShortcut.substring(firstDigitIndex); // ex: "0/1"
+        const letterPart = physicalShortcut.substring(0, firstDigitIndex).toLowerCase();
+        const numberPart = physicalShortcut.substring(firstDigitIndex);
 
         const fullPhysicalName = device.ports.find(port => {
             const parts = port.split(' ');
@@ -78,14 +197,11 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
         });
 
         if (!fullPhysicalName) {
-            return null; // Não encontrou a interface física base
+            return null;
         }
-
-        // 3. Reconstrói o nome completo, adicionando o ID da sub-interface se ele existir
         return subInterfaceId ? `${fullPhysicalName}.${subInterfaceId}` : fullPhysicalName;
     }
 
-    // Converte listas de VLANs ("10,20,30-35") em um array de strings
     function parseVlanList(vlanString: string): string[] {
         const vlans = new Set<string>();
         vlanString.split(',').forEach(part => {
@@ -132,10 +248,14 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
         };
 
         if (t0 === 'exit') {
-            if (mode === 'config-if' || mode === 'config-subif' || mode === 'config-vlan') {
+            // --- ATUALIZADO: Lógica de saída para novos modos ---
+            if (['config-if', 'config-subif', 'config-vlan', 'config-router', 'config-std-nacl'].includes(mode)) {
                 setMode('config');
                 setCurrentInterface(null);
                 setCurrentVlanId(null);
+                setCurrentOspfProcessId(null);
+                setCurrentBgpAs(null)
+                setCurrentAclId(null);
             } else if (mode === 'config') {
                 setMode('privileged');
             } else if (mode === 'privileged') {
@@ -163,6 +283,12 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
             if (t0 === 'show' && t1 === 'running-config') {
                 return JSON.stringify(device.config, null, 2);
             }
+            // --- NOVO: Comandos 'show' adicionais ---
+            if (t0 === 'show' && t1 === 'ip') {
+                if (t2 === 'route') return JSON.stringify({ static: device.config?.staticRoutes, ospf: device.config?.ospf }, null, 2);
+                if (t2 === 'ospf') return JSON.stringify(device.config?.ospf, null, 2);
+                if (t2 === 'access-lists') return JSON.stringify(device.config?.accessLists, null, 2);
+            }
         }
 
         if (mode === 'config') {
@@ -171,6 +297,95 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
                 updateConfig({ hostname: t1 });
                 return;
             }
+            // --- INÍCIO: NOVOS COMANDOS (ROUTER) ---
+            if (device.type === 'router') {
+                if (t0 === 'ip' && t1 === 'route' && t2 && rest[0] && rest[1]) {
+                    const [network, subnetMask, nextHop] = [t2, rest[0], rest[1]];
+                    const staticRoutes: IStaticRoute[] = JSON.parse(JSON.stringify(device.config?.staticRoutes || []));
+                    const routeId = `${network}/${subnetMask}`;
+
+                    if (isNegated) {
+                        const newRoutes = staticRoutes.filter(r => r.id !== routeId || r.nextHop !== nextHop);
+                        if (newRoutes.length === staticRoutes.length) return `% Route to ${network} via ${nextHop} not found.`;
+                        updateConfig({ staticRoutes: newRoutes });
+                        return;
+                    }
+
+                    if (staticRoutes.some(r => r.id === routeId && r.nextHop === nextHop)) return `% Route to ${network} via ${nextHop} already exists.`;
+                    staticRoutes.push({ id: routeId, network, subnetMask, nextHop });
+                    updateConfig({ staticRoutes });
+                    return;
+                }
+                if (t0 === 'router' && t1 === 'ospf' && t2) {
+                    if (isNegated) {
+                        if (device.config?.ospf?.processId === t2) {
+                            const { ospf, ...restConfig } = device.config;
+                            updateDeviceConfig(node.id, restConfig); // Remove o objeto OSPF
+                        }
+                        return;
+                    }
+                    if (device.config?.ospf && device.config.ospf.processId !== t2) {
+                        return `% OSPF process ${device.config.ospf.processId} is already running.`;
+                    }
+                    const ospfConfig: IOspfConfig = device.config?.ospf || { processId: t2, networks: [] };
+                    updateConfig({ ospf: ospfConfig });
+                    setCurrentOspfProcessId(t2);
+                    setMode('config-router');
+                    return;
+                }
+                if (t0 === 'access-list' && t1) {
+                    const aclId = t1;
+                    const aclNum = parseInt(aclId, 10);
+                    if (isNaN(aclNum) || aclNum < 1 || aclNum > 99) {
+                        return '% Invalid access list number.';
+                    }
+
+                    const accessLists: IAccessList[] = JSON.parse(JSON.stringify(device.config?.accessLists || []));
+
+                    if (isNegated) {
+                        // O comando "no access-list <id>" remove a ACL inteira.
+                        const newAcls = accessLists.filter(acl => acl.id !== aclId);
+                        if (newAcls.length === accessLists.length) return `% Access list ${aclId} not configured.`;
+                        updateConfig({ accessLists: newAcls });
+                        return;
+                    }
+
+                    // Se houver mais tokens (permit/deny), é um comando de linha única que não deveria estar aqui.
+                    if (t2) {
+                        return '% Incomplete command. Use this command to enter ACL configuration mode.';
+                    }
+
+                    // Entrar no modo de sub-configuração da ACL
+                    const existingAcl = accessLists.find(acl => acl.id === aclId);
+                    if (!existingAcl) {
+                        accessLists.push({ id: aclId, rules: [] });
+                        updateConfig({ accessLists });
+                    }
+                    setCurrentAclId(aclId);
+                    setMode('config-std-nacl');
+                    return;
+                }
+                if (t0 === 'router' && t1 === 'bgp' && t2) {
+                    const asNumber = t2;
+                    if (isNegated) {
+                        if (device.config?.bgp?.asNumber === asNumber) {
+                            const { bgp, ...restConfig } = device.config;
+                            updateDeviceConfig(node.id, restConfig);
+                        }
+                        return;
+                    }
+                    if (device.config?.bgp && device.config.bgp.asNumber !== asNumber) {
+                        return `% BGP process ${device.config.bgp.asNumber} is already running.`;
+                    }
+                    const bgpConfig: IBgpConfig = device.config?.bgp || { asNumber, neighbors: [] };
+                    updateConfig({ bgp: bgpConfig });
+                    setCurrentBgpAs(asNumber);
+                    setMode('config-router-bgp');
+                    return;
+                }
+            }
+            // --- FIM: NOVOS COMANDOS (ROUTER) ---
+
             if (t0 === 'vlan' && t1) {
                 const vlans = device.config?.vlans || [];
                 if (isNegated) {
@@ -183,7 +398,7 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
                     updateConfig({ vlans });
                 }
                 setCurrentVlanId(t1);
-                setMode('config-vlan'); // Entra no modo de config da vlan
+                setMode('config-vlan');
                 return;
             }
             if ((t0 === 'spanning-tree' || t0 === 'spa') && t1 === 'mode' && (t2 === 'rapid-pvst' || t2 === 'r')) {
@@ -224,18 +439,12 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
                 return;
             }
             if ((t0 === 'interface' || t0 === 'inter') && t1) {
-                // --- INÍCIO DA CORREÇÃO ---
-                // Verifica primeiro se o comando é "interface vlan <id>"
                 if (t1.toLowerCase() === 'vlan' && t2) {
                     const vlanId = t2;
-                    // Internamente, continuamos a usar o formato "Vlan<id>" para consistência
                     setCurrentInterface(`Vlan${vlanId}`);
                     setMode('config-if');
                     return;
                 }
-                // --- FIM DA CORREÇÃO ---
-
-                // Se não for "vlan", tenta expandir como uma interface física/sub-interface
                 const fullName = expandInterfaceName(t1);
                 if (fullName) {
                     setCurrentInterface(fullName);
@@ -247,6 +456,96 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
             }
         }
 
+        // --- NOVO: MODO DE CONFIGURAÇÃO OSPF ---
+        if (mode === 'config-router') {
+            if (!currentOspfProcessId) return "% Internal error: No OSPF process selected.";
+
+            if (t0 === 'network' && t1 && t2 && commandTokens[3] === 'area' && commandTokens[4]) {
+                const [ip, wildcard, area] = [t1, t2, commandTokens[4]];
+                const ospfConfig = JSON.parse(JSON.stringify(device.config?.ospf!));
+                const networkId = `${ip}/${wildcard}/${area}`;
+
+                if (isNegated) {
+                    ospfConfig.networks = ospfConfig.networks.filter((n: any) => n.id !== networkId);
+                } else {
+                    if (!ospfConfig.networks.some((n: any) => n.id === networkId)) {
+                        ospfConfig.networks.push({ id: networkId, ip, wildcard, area });
+                    }
+                }
+                updateConfig({ ospf: ospfConfig });
+                return;
+            }
+        }
+        if (mode === 'config-router-bgp') {
+            if (!currentBgpAs) return "% Internal error: No BGP process selected.";
+
+            // Comando: neighbor <ip> remote-as <remote-as>
+            if (t0 === 'neighbor' && t1 && t2 === 'remote-as' && rest[0]) {
+                const neighborIp = t1;
+                const remoteAs = rest[0];
+                const bgpConfig = JSON.parse(JSON.stringify(device.config?.bgp!));
+
+                if (isNegated) {
+                    bgpConfig.neighbors = bgpConfig.neighbors.filter((n: IBgpNeighbor) => n.ip !== neighborIp);
+                } else {
+                    // Remove qualquer vizinho antigo com o mesmo IP antes de adicionar o novo
+                    bgpConfig.neighbors = bgpConfig.neighbors.filter((n: IBgpNeighbor) => n.ip !== neighborIp);
+                    bgpConfig.neighbors.push({ id: neighborIp, ip: neighborIp, remoteAs });
+                }
+                updateConfig({ bgp: bgpConfig });
+                return;
+            }
+        }
+        if (mode === 'config-std-nacl') {
+            if (!currentAclId) return "% Internal error: No ACL context.";
+
+            const action = isNegated ? t1 : t0;
+            if (action !== 'permit' && action !== 'deny') {
+                return `% Invalid command. Expecting 'permit' or 'deny'.`;
+            }
+
+            const ruleTokens = isNegated ? commandTokens.slice(1) : commandTokens.slice(1);
+            let [sourceIp, sourceWildcard] = ruleTokens;
+
+            if (!sourceIp) return '% Incomplete command.';
+
+            // Tratar palavras-chave 'host' e 'any'
+            if (sourceIp.toLowerCase() === 'host') {
+                sourceIp = sourceWildcard; // O IP vem depois de 'host'
+                sourceWildcard = '0.0.0.0';
+                if (!sourceIp) return '% Incomplete command.';
+            } else if (sourceIp.toLowerCase() === 'any') {
+                sourceIp = '0.0.0.0';
+                sourceWildcard = '255.255.255.255';
+            } else {
+                // Wildcard é opcional, padrão para um host exato se não for fornecido
+                sourceWildcard = sourceWildcard || '0.0.0.0';
+            }
+
+            const accessLists: IAccessList[] = JSON.parse(JSON.stringify(device.config?.accessLists || []));
+            const acl = accessLists.find(a => a.id === currentAclId);
+            if (!acl) return "% Internal error: ACL disappeared.";
+
+            if (isNegated) {
+                // Remover a regra correspondente
+                const initialRuleCount = acl.rules.length;
+                acl.rules = acl.rules.filter(rule =>
+                    !(rule.action === action && rule.sourceIp === sourceIp && rule.sourceWildcard === sourceWildcard)
+                );
+                if (acl.rules.length === initialRuleCount) return `% Rule not found.`;
+            } else {
+                // Adicionar a nova regra
+                const newRule: IAclRule = {
+                    id: crypto.randomUUID(),
+                    action: action as 'permit' | 'deny',
+                    sourceIp,
+                    sourceWildcard
+                };
+                acl.rules.push(newRule);
+            }
+            updateConfig({ accessLists });
+            return;
+        }
         if (mode === 'config-vlan') {
             if (t0 === 'name' && t1) {
                 const vlans = device.config?.vlans || [];
@@ -259,7 +558,6 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
             }
         }
 
-        // Comandos do modo de Configuração de Interface
         if (mode === 'config-if' || mode === 'config-subif') {
             if (!currentInterface) return "% Internal error: No interface selected.";
 
@@ -267,37 +565,30 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
             const newInterfaces = JSON.parse(JSON.stringify(device.config?.interfaces || {}));
             if (!newInterfaces[mainPort]) newInterfaces[mainPort] = {};
 
-            // --- Comandos comuns a ambos os modos ---
-            if (t0 === 'shutdown') {
+            if (t0 === 'shutdown' || t0 === 'shut') {
                 newInterfaces[mainPort].isUp = isNegated ? true : false;
                 updateConfig({ interfaces: newInterfaces });
                 return;
             }
-            if (t0 === 'description') {
+            if (t0 === 'description' || t0 === 'desc') {
                 newInterfaces[mainPort].description = isNegated ? undefined : commandTokens.slice(1).join(' ');
                 updateConfig({ interfaces: newInterfaces });
                 return;
             }
 
-            // --- Comandos de Roteador ---
             if (device.type === 'router') {
                 if (mode === 'config-subif') {
-                    if ((t0 === 'encapsulation' || t0 === 'enc') && (t1 === 'dot1q' || t1 === 'dot') && t2) {
-                        // Validação: o ID da VLAN deve ser o mesmo da sub-interface
+                    if ((t0 === 'encapsulation' || t0 === 'enc') && t1 === 'dot1q' && t2) {
                         if (t2 !== subId) {
                             return `% Configuring encapsulation on subinterface ${currentInterface} for a different VLAN is not allowed.`;
                         }
-
                         if (isNegated) {
-                            // Remove toda a configuração da sub-interface
                             if (newInterfaces[mainPort]?.subInterfaces?.[subId]) {
                                 delete newInterfaces[mainPort].subInterfaces[subId];
                                 updateConfig({ interfaces: newInterfaces });
                             }
                             return;
                         }
-
-                        // Cria a estrutura da sub-interface se não existir
                         if (!newInterfaces[mainPort].subInterfaces) {
                             newInterfaces[mainPort].subInterfaces = {};
                         }
@@ -317,7 +608,7 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
                         updateConfig({ interfaces: newInterfaces });
                         return;
                     }
-                } else { // modo 'config-if' para roteador
+                } else {
                     if (t0 === 'ip' && (t1 === 'address' || t1 === 'add') && (t2 || isNegated)) {
                         newInterfaces[mainPort].ip = isNegated ? undefined : t2;
                         newInterfaces[mainPort].subnetMask = isNegated ? undefined : rest[0];
@@ -327,11 +618,9 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
                 }
             }
 
-            // --- Comandos válidos apenas para interfaces físicas/VLAN (não sub-interfaces) ---
             if (mode === 'config-if') {
                 const vlanInterfaceMatch = currentInterface.match(/^Vlan(\d+)$/i);
                 if (vlanInterfaceMatch) {
-                    // Configurando uma SVI (interface Vlan)
                     if (t0 === 'ip' && (t1 === 'address' || t1 === 'add') && t2) {
                         const managementVlanId = vlanInterfaceMatch[1];
                         updateConfig({
@@ -342,9 +631,6 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
                         return;
                     }
                 } else if (device.type === 'switch') {
-                    // --- INÍCIO DO CÓDIGO RESTAURADO E COMPLETO ---
-
-                    // Comandos de Switchport para interfaces físicas
                     if ((t0 === 'switchport' || t0 === 'swi') && t1 === 'mode' && t2) {
                         newInterfaces[currentInterface].mode = t2 as IPortModes;
                         updateConfig({ interfaces: newInterfaces });
@@ -369,7 +655,7 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
                             vlansToModify.forEach(v => allowedVlans.add(v));
                         } else if (action === 'remove') {
                             vlansToModify.forEach(v => allowedVlans.delete(v));
-                        } else { // Se não for 'add' ou 'remove', substitui a lista
+                        } else {
                             const replacementVlans = parseVlanList(commandTokens.slice(4).join(','));
                             allowedVlans = isNegated ? new Set() : new Set(replacementVlans);
                         }
@@ -378,8 +664,18 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
                         updateConfig({ interfaces: newInterfaces });
                         return;
                     }
+                    if ((t0 === 'spanning-tree' || t0 === 'spa') && t1 === 'portfast') {
+                        newInterfaces[currentInterface].portfast = !isNegated;
+                        updateConfig({ interfaces: newInterfaces });
+                        return;
+                    }
 
-                    // Comando de Channel-Group
+                    if ((t0 === 'spanning-tree' || t0 === 'spa') && t1 === 'bpduguard' && t2 === 'enable') {
+                        newInterfaces[currentInterface].bpduGuard = !isNegated;
+                        updateConfig({ interfaces: newInterfaces });
+                        return;
+                    }
+
                     if (t0 === 'channel-group' && t1) {
                         const channelGroups: IChannelGroup[] = JSON.parse(JSON.stringify(device.config?.channelGroups || []));
                         let group = channelGroups.find(g => g.id === t1);
@@ -409,7 +705,55 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
         return `% Unrecognized command: "${cmd}"`;
     }
 
-    // Gerencia o histórico de comandos com as setas para cima/baixo
+    function findLongestCommonPrefix(strs: string[]): string {
+        if (!strs || strs.length === 0) return '';
+        let prefix = strs[0];
+        for (let i = 1; i < strs.length; i++) {
+            while (strs[i].indexOf(prefix) !== 0) {
+                prefix = prefix.substring(0, prefix.length - 1);
+                if (prefix === '') return '';
+            }
+        }
+        return prefix;
+    }
+
+    function handleAutoComplete() {
+        const tokens = input.split(/\s+/);
+        const currentWord = tokens[tokens.length - 1] || '';
+        const commandPath = tokens.slice(0, -1);
+
+        let currentNode: CommandTree | null = commands[mode];
+
+        for (const token of commandPath) {
+            if (currentNode && currentNode[token]) {
+                currentNode = currentNode[token];
+            } else {
+                currentNode = null;
+                break;
+            }
+        }
+
+        if (currentNode === null) {
+            return;
+        }
+
+        const matches = Object.keys(currentNode).filter(cmd => cmd.startsWith(currentWord));
+
+        if (matches.length === 1) {
+            const completedCmd = [...commandPath, matches[0], ''].join(' ');
+            setInput(completedCmd);
+        } else if (matches.length > 1) {
+            const lcp = findLongestCommonPrefix(matches);
+            if (lcp.length > currentWord.length) {
+                const completedCmd = [...commandPath, lcp].join(' ');
+                setInput(completedCmd);
+            } else {
+                appendLine(prompt() + input);
+                appendLine(matches.join('  '));
+            }
+        }
+    }
+
     function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
         if (e.key === 'ArrowUp') {
             e.preventDefault();
@@ -434,6 +778,10 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
             e.preventDefault();
             handleCommand(input);
             setInput('');
+        }
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            handleAutoComplete();
         }
     }
 

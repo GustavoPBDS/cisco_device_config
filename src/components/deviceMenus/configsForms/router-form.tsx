@@ -30,6 +30,7 @@ interface IProps {
 export default function RouterForm({ node, onClose }: IProps) {
     const { devices, updateDeviceConfig } = useScenario();
     const device = devices.get(node.id)!;
+    const [errors, setErrors] = useState<Record<string, string>>({});
 
     const [hostname, setHostname] = useState(device.config?.hostname ?? "");
     const [interfaceConfigs, setInterfaceConfigs] = useState<Record<string, ICombinedInterfaceConfig>>(
@@ -63,9 +64,10 @@ export default function RouterForm({ node, onClose }: IProps) {
                 setHostname(currentDevice.config?.hostname ?? "");
                 setInterfaceConfigs(currentDevice.config?.interfaces ?? {});
                 setManualExclusions(currentDevice.config?.dhcpExcluded ?? []);
+                setErrors({})
             }
         }
-    }, [node, devices]);
+    }, [node]);
 
     useEffect(() => {
         const loadedExclusions = device.config?.dhcpExcluded ?? [];
@@ -75,6 +77,18 @@ export default function RouterForm({ node, onClose }: IProps) {
         setManualExclusions(actualManualIps);
 
     }, [autoExclusions, device.config?.dhcpExcluded])
+
+    const validateHostname = (value: string) => {
+        if (!value) return "Hostname é obrigatório";
+        if (!/^[a-zA-Z0-9-]$/.test(value)) return "Use apenas letras, números e hífens";
+        return "";
+    };
+
+    const handleHostnameChange = (value: string) => {
+        setHostname(value);
+        const error = validateHostname(value);
+        setErrors(prev => ({ ...prev, hostname: error }));
+    };
 
     const allUnifiedExclusions = useMemo(() => {
         const combined = new Set([...autoExclusions, ...manualExclusions]);
@@ -159,6 +173,13 @@ export default function RouterForm({ node, onClose }: IProps) {
     const handleSubmit = (e: FormEvent) => {
         e.preventDefault();
 
+        const hostError = validateHostname(hostname);
+        if (hostError) {
+            setErrors(prev => ({ ...prev, hostname: hostError }));
+            toast.error("Corrija os erros antes de salvar.");
+            return;
+        }
+
         updateDeviceConfig(node.id, {
             ...device.config,
             hostname,
@@ -176,7 +197,13 @@ export default function RouterForm({ node, onClose }: IProps) {
                     <h3 className="text-lg font-semibold">Configuração Básica</h3>
                     <div className="flex flex-col gap-1">
                         <label className="text-sm text-zinc-300" htmlFor="hostname">Hostname</label>
-                        <input className="bg-gray-900 rounded-lg p-2 text-sm focus:outline-none" type="text" placeholder="Ex: R-1" id="hostname" value={hostname} onChange={e => setHostname(e.target.value)} />
+                        <input
+                            className="bg-gray-900 rounded-lg p-2 text-sm focus:outline-none"
+                            type="text" placeholder="Ex: R-1" id="hostname"
+                            value={hostname}
+                            onChange={e => handleHostnameChange(e.target.value)}
+                        />
+                        {errors.hostname && <p className="text-red-400 text-sm">{errors.hostname}</p>}
                     </div>
                 </div>
 

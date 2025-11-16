@@ -6,17 +6,34 @@ import { toast } from "sonner";
 
 interface IProps {
     onClose: () => void;
-    // Recebe um array de objetos, onde cada objeto é uma configuração { "nome_dispositivo": "config..." }
     configurations: Record<string, string>[];
 }
 
 export default function ExportScenarioComponent({ onClose, configurations }: IProps) {
     const [isClient, setIsClient] = useState(false);
-    // Armazena o LABEL (nome) do dispositivo selecionado, que agora é a nossa chave principal
     const [selectedDevice, setSelectedDevice] = useState<string | undefined>();
 
+    function downloadJSON(data: unknown, filename: string): void {
+        const jsonString = JSON.stringify(data, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+
+        link.href = url;
+        link.download = filename.endsWith('.json') ? filename : `${filename}.json`;
+
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+    }
+
+    const handleDownload = () => {
+        downloadJSON(configurations, 'scenario_configurations.json')
+    };
+
     useEffect(() => {
-        // Define o primeiro dispositivo da lista como selecionado por padrão ao montar ou ao receber novas configs
         if (configurations && configurations.length > 0) {
             const firstDeviceLabel = Object.keys(configurations[0])[0];
             setSelectedDevice(firstDeviceLabel);
@@ -24,15 +41,12 @@ export default function ExportScenarioComponent({ onClose, configurations }: IPr
         setIsClient(true);
     }, [configurations]);
 
-    // Função para buscar a string de configuração do dispositivo selecionado
     const getSelectedConfig = (): string | undefined => {
         if (!selectedDevice) return undefined;
-        // Encontra o objeto no array que tem o 'selectedDevice' como chave
         const configObject = configurations.find(config => config.hasOwnProperty(selectedDevice));
         return configObject ? configObject[selectedDevice] : undefined;
     };
 
-    // A função formatConfig não precisa de alterações
     const formatConfig = (text: string): string => {
         const blockStarters = ['interface ', 'vlan ', 'ip dhcp pool '];
         const blockEnders = ['!'];
@@ -114,6 +128,13 @@ export default function ExportScenarioComponent({ onClose, configurations }: IPr
                     </pre>
 
                     <footer>
+                        <button
+                            onClick={handleDownload}
+                            className="absolute bottom-2.5 left-4 py-1 px-3 w-fit bg-green-500 rounded-md cursor-pointer hover:opacity-90 flex items-center gap-1 text-sm disabled:bg-gray-500 disabled:cursor-not-allowed"
+                        >
+                            Instalar JSON
+                        </button>
+
                         <button
                             onClick={exportConfiguration}
                             type="button"

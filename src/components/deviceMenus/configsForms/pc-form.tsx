@@ -29,7 +29,7 @@ export default function PcForm({ node, onClose }: IProps) {
             setIpv4(temp?.config?.ipv4 ?? "");
             setIpv4Mask(temp?.config?.ipv4Mask ?? "");
         }
-    }, [node, devices])
+    }, [node])
 
     const findVlanGatewayAndDhcpServer = (pcId: string) => {
         const pc = devices.get(pcId);

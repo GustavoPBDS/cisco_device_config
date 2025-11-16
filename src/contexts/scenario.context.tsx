@@ -4,7 +4,8 @@ import { IAnalyzeJsonParsed } from "@/components/scenario/actionsContainer"
 import { NetworkDeviceData } from "@/interfaces/devices"
 import { getNetworkInfo, ipToLong, longToIp } from "@/utils/calcs-ips"
 import { exportPcConfig, exportRouterConfig, exportSwitchConfig } from "@/utils/exportsFunctions"
-import { createContext, ReactNode, useContext, useState } from "react"
+import localforage from "localforage"
+import { createContext, ReactNode, useContext, useEffect, useState } from "react"
 
 const devicesPorts = {
     switch: [
@@ -29,41 +30,90 @@ const devicesPorts = {
 const initialDevices = new Map<string, NetworkDeviceData>([
     ['1', {
         type: 'router',
-        label: 'Roteador-1',
+        label: 'Router-1',
         ports: devicesPorts.router,
-        portsConnected: new Map()
+        portsConnected: new Map(),
+        position: { x: 250, y: -100 }
     }],
     ['2', {
         type: 'switch',
         label: 'Switch-1',
         ports: devicesPorts.switch,
-        portsConnected: new Map()
+        portsConnected: new Map(),
+        position: { x: 100, y: 50 }
     }],
     ['3', {
         type: 'switch',
         label: 'Switch-2',
         ports: devicesPorts.switch,
-        portsConnected: new Map()
+        portsConnected: new Map(),
+        position: { x: 400, y: 50 }
     }],
     ['4', {
         type: 'pc',
         label: 'PC-1',
         ports: devicesPorts.pc,
-        portsConnected: new Map()
+        portsConnected: new Map(),
+        position: { x: 100, y: 200 }
     }],
     ['5', {
         type: 'pc',
         label: 'PC-2',
         ports: devicesPorts.pc,
-        portsConnected: new Map()
+        portsConnected: new Map(),
+        position: { x: 400, y: 200 }
     }],
 ])
+const SCENARIO_STORAGE_KEY = 'scenarioCache';
+type StorableState = {
+    devices: [string, NetworkDeviceData][];
+    dhcpLeases: [string, [string, string][]][];
+    analysisResult: IAnalyzeJsonParsed[] | undefined;
+}
+
+export function serializeState(
+    devices: Map<string, NetworkDeviceData>,
+    dhcpLeases: Map<string, Map<string, string>>,
+    analysisResult: IAnalyzeJsonParsed[] | undefined
+): StorableState {
+
+    const storableDhcpLeases = Array.from(dhcpLeases.entries()).map(([poolId, leaseMap]) => {
+        return [poolId, Array.from(leaseMap.entries())] as [string, [string, string][]];
+    });
+
+    const storableState: StorableState = {
+        devices: Array.from(devices.entries()),
+        dhcpLeases: storableDhcpLeases,
+        analysisResult: analysisResult
+    };
+    return storableState;
+}
+
+export function deserializeState(storableState: StorableState): {
+    devices: Map<string, NetworkDeviceData>,
+    dhcpLeases: Map<string, Map<string, string>>,
+    analysisResult: IAnalyzeJsonParsed[] | undefined
+} {
+    const devices = new Map(storableState.devices);
+
+    const dhcpLeases = new Map(
+        storableState.dhcpLeases.map(([poolId, leaseArray]) => {
+            return [poolId, new Map(leaseArray)];
+        })
+    );
+
+    const analysisResult = storableState.analysisResult;
+
+    return { devices, dhcpLeases, analysisResult };
+}
 
 interface IScenarioContext {
     devices: Map<string, NetworkDeviceData>,
-    addPc: () => [NetworkDeviceData, string],
-    addRouter: () => [NetworkDeviceData, string],
-    addSwitch: () => [NetworkDeviceData, string],
+    clearScenario: () => void
+    addPc: (position: { x: number, y: number }) => [NetworkDeviceData, string],
+    addRouter: (position: { x: number, y: number }) => [NetworkDeviceData, string],
+    addSwitch: (position: { x: number, y: number }) => [NetworkDeviceData, string],
+    updateDevicePosition: (id: string, position: { x: number, y: number }) => void
     removeDevice: (id: string) => void
     connectDevices: (edgeId: string, device: { id: string, port: string }, sourceDevice: { id: string, port: string }) => void
     disconnectDevices: (edgeId: string) => void
@@ -80,13 +130,60 @@ interface IScenarioContext {
 const ScenarioContext = createContext({} as IScenarioContext)
 
 export function ScenarioContextProvider({ children }: { children: ReactNode }) {
-    const [devices, setDevices] = useState<Map<string, NetworkDeviceData>>(initialDevices)
-
+    const [devices, setDevices] = useState<Map<string, NetworkDeviceData>>(new Map())
     const [dhcpLeases, setDhcpLeases] = useState<Map<string, Map<string, string>>>(new Map());
-
     const [analysisResult, setAnalysisResult] = useState<IAnalyzeJsonParsed[] | undefined>();
+    const [isLoading, setIsLoading] = useState(false)
 
-    // --- ADICIONAR ESTA FUNÇÃO ---
+    useEffect(() => {
+        async function loadFromCache() {
+            try {
+                const savedState = await localforage.getItem<StorableState>(SCENARIO_STORAGE_KEY);
+
+                if (!savedState || savedState.devices.length === 0) {
+                    setDevices(initialDevices)
+                    return
+                }
+
+                const { devices, dhcpLeases, analysisResult } = deserializeState(savedState);
+                setDevices(devices);
+                setDhcpLeases(dhcpLeases);
+                setAnalysisResult(analysisResult);
+            } catch (error) {
+                console.error("Falha ao carregar cenário do cache (localForage):", error);
+            } finally {
+                setIsLoading(false);
+            }
+        }
+
+        loadFromCache();
+    }, []);
+
+    useEffect(() => {
+        if (isLoading) {
+            return;
+        }
+
+        try {
+            const stateToSave = serializeState(devices, dhcpLeases, analysisResult);
+
+            localforage.setItem(SCENARIO_STORAGE_KEY, stateToSave)
+                .catch(error => {
+                    console.error("Falha ao salvar cenário no cache (localForage):", error);
+                });
+
+        } catch (error) {
+            console.error("Falha ao serializar o estado para salvamento:", error);
+        }
+
+    }, [devices, dhcpLeases, analysisResult, isLoading]);
+
+    const clearScenario = () => {
+        setDevices(new Map())
+        setDhcpLeases(new Map())
+        setAnalysisResult(undefined)
+    }
+
     const storeAnalysisResult = (result: IAnalyzeJsonParsed[] | undefined) => {
         setAnalysisResult(result);
     };
@@ -107,7 +204,7 @@ export function ScenarioContextProvider({ children }: { children: ReactNode }) {
         return newLabel
     }
 
-    const addPc = (): [NetworkDeviceData, string] => {
+    const addPc = (position: { x: number, y: number }): [NetworkDeviceData, string] => {
         const newId = crypto.randomUUID()
 
         let newPc: NetworkDeviceData
@@ -119,6 +216,7 @@ export function ScenarioContextProvider({ children }: { children: ReactNode }) {
                 ports: devicesPorts.pc,
                 portsConnected: new Map(),
                 label,
+                position
             }
             const updated = new Map(prev)
             updated.set(newId, newPc)
@@ -128,18 +226,19 @@ export function ScenarioContextProvider({ children }: { children: ReactNode }) {
         return [newPc!, newId]
     }
 
-    const addRouter = (): [NetworkDeviceData, string] => {
+    const addRouter = (position: { x: number, y: number }): [NetworkDeviceData, string] => {
         const newId = crypto.randomUUID()
 
         let newRouter: NetworkDeviceData
 
         setDevices(prev => {
-            const label = getUniqueLabel('Roteador', prev)
+            const label = getUniqueLabel('Router', prev)
             newRouter = {
                 type: 'router',
                 ports: devicesPorts.router,
                 portsConnected: new Map(),
                 label,
+                position
             }
             const updated = new Map(prev)
             updated.set(newId, newRouter)
@@ -149,7 +248,7 @@ export function ScenarioContextProvider({ children }: { children: ReactNode }) {
         return [newRouter!, newId]
     }
 
-    const addSwitch = (): [NetworkDeviceData, string] => {
+    const addSwitch = (position: { x: number, y: number }): [NetworkDeviceData, string] => {
         const newId = crypto.randomUUID()
 
         let newSwitch: NetworkDeviceData
@@ -161,6 +260,7 @@ export function ScenarioContextProvider({ children }: { children: ReactNode }) {
                 ports: devicesPorts.switch,
                 portsConnected: new Map(),
                 label,
+                position
             }
             const updated = new Map(prev)
             updated.set(newId, newSwitch)
@@ -168,6 +268,22 @@ export function ScenarioContextProvider({ children }: { children: ReactNode }) {
         })
 
         return [newSwitch!, newId]
+    }
+
+    const updateDevicePosition = (id: string, position: { x: number, y: number }) => {
+        setDevices(prev => {
+            const updated = new Map(prev);
+            const device = updated.get(id);
+
+            if (device) {
+                const newDevice = {
+                    ...device,
+                    position: position
+                };
+                updated.set(id, newDevice);
+            }
+            return updated;
+        });
     }
 
     const releaseDhcpLease = (pcId: string) => {
@@ -406,7 +522,7 @@ export function ScenarioContextProvider({ children }: { children: ReactNode }) {
             devices, addPc, addRouter, addSwitch, removeDevice, connectDevices,
             disconnectDevices, updateDeviceConfig, exportConfig,
             releaseDhcpLease, requestDhcpLease, analysisResult,
-            storeAnalysisResult
+            storeAnalysisResult, updateDevicePosition, clearScenario
         }}>
             {children}
         </ScenarioContext.Provider>

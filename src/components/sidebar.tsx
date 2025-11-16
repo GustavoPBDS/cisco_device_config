@@ -23,7 +23,7 @@ export default function Sidebar({ onDragStart, onTouchStart }: SidebarProps) {
                     draggable
                 >
                     <RouterSvgComponent />
-                    <span className='font-bold text-zinc-100 group-hover:text-sky-400 text-center text-sm'>Roteator</span>
+                    <span className='font-bold text-zinc-100 group-hover:text-sky-400 text-center text-sm'>Router</span>
                 </div>
 
                 <div

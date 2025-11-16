@@ -107,6 +107,9 @@ export const exportSwitchConfig = (device: NetworkDeviceData, output: string) =>
 }
 
 type CombinedInterfaceConfig = IRouterInterfaceConfig & {
+    description?: string;
+    ip?: string;
+    subnetMask?: string;
     subInterfaces?: Record<string, IRouterSubInterfaceConfig>;
 };
 
@@ -153,21 +156,27 @@ export const exportRouterConfig = (device: NetworkDeviceData, output: string) =>
         });
     }
 
-    // --- Passo 4: Gerar a configuração das Interfaces e Sub-interfaces ---
+    if (config.accessLists && config.accessLists.length > 0) {
+        output += "!\n";
+        const sortedAcls = [...config.accessLists].sort((a, b) => parseInt(a.id) - parseInt(b.id));
+        sortedAcls.forEach(acl => {
+            acl.rules.forEach(rule => {
+                output += `access-list ${acl.id} ${rule.action} ${rule.sourceIp} ${rule.sourceWildcard}\n`;
+            });
+        });
+    }
+
     if (config.interfaces) {
         output += "!\n";
-        // Ordenar as portas para uma saída consistente (ex: G0/0 antes de G0/1)
         const sortedPorts = Object.keys(config.interfaces).sort();
 
         sortedPorts.forEach(port => {
             const cfg = (config.interfaces as Record<string, CombinedInterfaceConfig>)[port];
 
-            // Configuração da interface física
             output += `interface ${port}\n`;
             if (cfg.description) {
                 output += ` description ${cfg.description}\n`;
             }
-            // Se a porta tem sub-interfaces, ela não deve ter IP
             if (cfg.subInterfaces && Object.keys(cfg.subInterfaces).length > 0) {
                 output += ` no ip address\n`;
             } else if (cfg.ip && cfg.subnetMask) {
@@ -176,7 +185,6 @@ export const exportRouterConfig = (device: NetworkDeviceData, output: string) =>
             output += ` no shutdown\n`; // Portas de roteador geralmente ficam ativas
             output += "!\n";
 
-            // Configuração das sub-interfaces (Router on a Stick)
             if (cfg.subInterfaces) {
                 const sortedVlans = Object.keys(cfg.subInterfaces).sort((a, b) => parseInt(a) - parseInt(b));
                 sortedVlans.forEach(vlanId => {
@@ -190,6 +198,23 @@ export const exportRouterConfig = (device: NetworkDeviceData, output: string) =>
                     }
                 });
             }
+        });
+    }
+
+    if (config.ospf) {
+        output += "!\n";
+        output += `router ospf ${config.ospf.processId}\n`;
+        if (config.ospf.networks && config.ospf.networks.length > 0) {
+            config.ospf.networks.forEach(net => {
+                output += ` network ${net.ip} ${net.wildcard} area ${net.area}\n`;
+            });
+        }
+    }
+
+    if (config.staticRoutes && config.staticRoutes.length > 0) {
+        output += "!\n";
+        config.staticRoutes.forEach(route => {
+            output += `ip route ${route.network} ${route.subnetMask} ${route.nextHop}\n`;
         });
     }
     return output;

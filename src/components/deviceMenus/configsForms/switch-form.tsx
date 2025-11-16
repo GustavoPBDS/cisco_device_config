@@ -78,29 +78,24 @@ export default function SwitchForm({ node, onClose }: IProps) {
         if (node) {
             const currentDevice = devices.get(node.id);
             if (currentDevice) {
-                // Resetar configurações básicas e de gerenciamento
                 setHostname(currentDevice.config?.hostname ?? "");
                 setManagerIp(currentDevice.config?.managementIp ?? "");
                 setDefaultGateway(currentDevice.config?.defaultGateway ?? "");
                 setManagementVlanId(currentDevice.config?.managementVlanId ?? "");
                 setSubnetMask(currentDevice.config?.subnetMask ?? "255.255.255.0");
 
-                // Resetar VLANs
                 setVlans(currentDevice.config?.vlans ?? [{ name: '', id: '' }]);
 
-                // Resetar Spanning Tree
                 setRapidStp(currentDevice.config?.stp?.rapid ?? false);
                 setStpPrimaryVlans(currentDevice.config?.stp?.primary ?? []);
                 setStpSecondaryVlans(currentDevice.config?.stp?.secondary ?? []);
 
-                // Resetar Channel Groups
                 const initialGroups = currentDevice.config?.channelGroups ?? [];
                 setChannelGroups(initialGroups.map((group: Omit<IChannelGroup, 'internalId'>) => ({
                     ...group,
                     internalId: crypto.randomUUID(),
                 })));
 
-                // Resetar configurações de interface
                 const newInterfaceConfigs: Record<string, IInterfaceConfig> = {};
                 const interfaces = currentDevice.config?.interfaces ?? {};
                 for (const port of currentDevice.ports) {
@@ -108,11 +103,10 @@ export default function SwitchForm({ node, onClose }: IProps) {
                 }
                 setInterfaceConfigs(newInterfaceConfigs);
 
-                // Limpar erros
                 setErrors({});
             }
         }
-    }, [node, devices]);
+    }, [node]);
 
 
 
@@ -136,6 +130,7 @@ export default function SwitchForm({ node, onClose }: IProps) {
             const num = Number(vlan.id);
             if (isNaN(num) || num < 1 || num > 4094) return "VLAN ID deve ser entre 1 e 4094";
             if (!vlan.name) return "Nome da VLAN é obrigatório";
+            if (!/^[a-zA-Z0-9-]+$/.test(vlan.name)) return `Nome da VLAN '${vlan.name}' é inválido.`
         }
         return "";
     };

@@ -3,10 +3,51 @@ import { IChannelGroup, IVlan } from "@/components/deviceMenus/configsForms/swit
 
 export type IPortModes = 'trunk' | 'access'
 
+export interface IStaticRoute {
+    id: string;
+    network: string;
+    subnetMask: string;
+    nextHop: string;
+}
+
+export type IAclAction = 'permit' | 'deny';
+export interface IAclRule {
+    id: string;
+    action: IAclAction;
+    sourceIp: string;
+    sourceWildcard: string;
+}
+export interface IAccessList {
+    id: string;
+    rules: IAclRule[];
+}
+
+export interface IOspfNetwork {
+    id: string;
+    ip: string;
+    wildcard: string;
+    area: string;
+}
+export interface IOspfConfig {
+    processId: string;
+    networks: IOspfNetwork[];
+}
+
+export interface IBgpNeighbor {
+    id: string;
+    ip: string;
+    remoteAs: string;
+}
+
+export interface IBgpConfig {
+    asNumber: string;
+    neighbors: IBgpNeighbor[];
+}
+
 export interface NetworkDeviceData {
     type: 'switch' | 'router' | 'pc';
     label: string;
-
+    position: { x: number; y: number }
     ports: string[];
 
     portsConnected: Map<string, {
@@ -32,21 +73,23 @@ export interface NetworkDeviceData {
             secondary: string[]
         };
         interfaces?: Record<string, {
-            // Para switch
             isUp?: boolean;
-            mode?: 'access' | 'trunk';
+            mode?: IPortModes;
             accessVlan?: string;
             trunkVlans?: string[];
             nativeVlan?: string;
             bpduGuard?: boolean;
             portfast?: boolean;
-            // Para router
             ip?: string;
             subnetMask?: string;
             description?: string;
             subInterfaces?: Record<string, IRouterSubInterfaceConfig>
         }>;
         dhcpExcluded?: string[]
+        ospf?: IOspfConfig;
+        staticRoutes?: IStaticRoute[];
+        accessLists?: IAccessList[];
+        bgp?: IBgpConfig;
     }
 
 };

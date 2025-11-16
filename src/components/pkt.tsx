@@ -13,7 +13,8 @@ import ReactFlow, {
     MarkerType,
     Node,
     SmoothStepEdge,
-    StraightEdge
+    StraightEdge,
+    NodeChange
 } from 'reactflow';
 
 import 'reactflow/dist/style.css';
@@ -34,47 +35,13 @@ let id = 6;
 const edgeTypes = { 'parallel-straight': ParallelStraightEdge };
 
 export default function PacketTracerClone() {
-    const { devices, addPc, addRouter, addSwitch, disconnectDevices } = useScenario()
-
+    const { devices, addPc, addRouter, addSwitch, disconnectDevices, updateDevicePosition } = useScenario()
     const clickTimeout = useRef<any>(null)
-
-    const initialNodes = useMemo(() => ([
-        {
-            id: '1',
-            type: 'networkDevice',
-            position: { x: 250, y: -100 },
-            data: devices.get('1'),
-        },
-        {
-            id: '2',
-            type: 'networkDevice',
-            position: { x: 100, y: 50 },
-            data: devices.get('2'),
-        },
-        {
-            id: '3',
-            type: 'networkDevice',
-            position: { x: 400, y: 50 },
-            data: devices.get('3'),
-        },
-        {
-            id: '4',
-            type: 'networkDevice',
-            position: { x: 100, y: 200 },
-            data: devices.get('4'),
-        },
-        {
-            id: '5',
-            type: 'networkDevice',
-            position: { x: 400, y: 200 },
-            data: devices.get('5'),
-        },
-    ]), [])
 
     const [menuPorts, setMenuPorts] = useState(false)
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
-    const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+    const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
     const [menu, setMenu] = useState<{ visible: boolean; node: Node<NetworkDeviceData> | null }>({
@@ -164,37 +131,23 @@ export default function PacketTracerClone() {
             }
 
             const position = reactFlowInstance.screenToFlowPosition({
-                x: event.clientX - reactFlowBounds.left,
-                y: event.clientY - reactFlowBounds.top,
+                x: event.clientX - reactFlowBounds.left - 40,
+                y: event.clientY - reactFlowBounds.top - 50,
             });
 
 
             let device
             if (type === 'pc') {
-                device = addPc()
+                device = addPc(position)
             } else if (type === 'router') {
-                device = addRouter()
+                device = addRouter(position)
             } else if (type === 'switch') {
-                device = addSwitch()
+                device = addSwitch(position)
             } else {
-                device = addPc()
+                device = addPc(position)
             }
-
-            const newNode: Node<NetworkDeviceData> = {
-                id: device[1],
-                type: 'networkDevice',
-                position,
-                data: {
-                    type: device[0]?.type!,
-                    label: device[0]?.label!,
-                    ports: device[0]?.ports!,
-                    portsConnected: device[0]?.portsConnected!
-                },
-            };
-
-            setNodes((nds) => nds.concat(newNode));
         },
-        [reactFlowInstance, setNodes]
+        [reactFlowInstance, addPc, addRouter, addSwitch]
     );
 
     const onDragStart = (event: React.DragEvent, nodeType: string) => {
@@ -212,6 +165,14 @@ export default function PacketTracerClone() {
         });
         event.preventDefault();
     };
+    const onNodeDragStop = useCallback((
+        event: React.MouseEvent,
+        node: Node<NetworkDeviceData>
+    ) => {
+        if (node.position) {
+            updateDevicePosition(node.id, node.position);
+        }
+    }, [updateDevicePosition])
 
     useEffect(() => {
         if (!mobileDrag.active) {
@@ -248,6 +209,68 @@ export default function PacketTracerClone() {
             document.removeEventListener('touchend', handleTouchEnd);
         };
     }, [mobileDrag, onDrop]);
+    useEffect(() => {
+        const nodesFromContext = Array.from(devices.entries()).map(([id, deviceData]) => ({
+            id: id,
+            type: 'networkDevice',
+            position: deviceData.position,
+            data: deviceData,
+        }));
+
+        setNodes(nodesFromContext);
+
+    }, [devices, setNodes])
+    useEffect(() => {
+        const edgesFromContext: Edge[] = [];
+        const processedEdgeIds = new Set<string>();
+
+        for (const [deviceId, deviceData] of devices.entries()) {
+
+            for (const [edgeId, connectionInfo] of deviceData.portsConnected.entries()) {
+
+                if (processedEdgeIds.has(edgeId)) {
+                    continue;
+                }
+
+                const label = `${connectionInfo.port} ↔ ${connectionInfo.deviceConnectedPort}`;
+
+                const newEdge: Edge = {
+                    id: edgeId,
+                    sourceHandle: 'center-source',
+                    targetHandle: 'center-target',
+                    source: deviceId,
+                    target: connectionInfo.deviceConnected,
+                    label: label,
+                    type: 'parallel-straight',
+                    style: { strokeWidth: 2, stroke: '#0891b2' },
+                };
+
+                edgesFromContext.push(newEdge);
+                processedEdgeIds.add(edgeId); // Marca como processada
+            }
+        }
+
+        const fixedEdges = edgesFromContext.map((e) => {
+            const pairId = [e.source, e.target].sort().join('-');
+            const siblings = edgesFromContext.filter(
+                (s) => [s.source, s.target].sort().join('-') === pairId
+            );
+
+            const myIndex = siblings.findIndex(s => s.id === e.id);
+            const isReverse = e.source > e.target;
+            const direction = isReverse ? 'reverse' : 'forward';
+
+            e.data = {
+                index: myIndex,
+                count: siblings.length,
+                direction,
+            };
+            return e;
+        });
+
+        setEdges(fixedEdges);
+
+    }, [devices, setEdges])
 
     const onDragOver = useCallback((event: DragEvent) => {
         event.preventDefault();
@@ -266,6 +289,7 @@ export default function PacketTracerClone() {
                             edgeTypes={edgeTypes}
                             nodeTypes={nodeTypes}
                             onNodesChange={onNodesChange}
+                            onNodeDragStop={onNodeDragStop}
                             onEdgesChange={onEdgesChange}
                             onInit={setReactFlowInstance}
                             onDrop={onDrop}
