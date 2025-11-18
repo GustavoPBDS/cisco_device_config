@@ -89,6 +89,7 @@ export interface NetworkDeviceData {
         ospf?: IOspfConfig;
         staticRoutes?: IStaticRoute[];
         accessLists?: IAccessList[];
+        enableSecret?: string
         bgp?: IBgpConfig;
     }
 

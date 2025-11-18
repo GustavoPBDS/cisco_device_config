@@ -37,7 +37,6 @@ const commands: Record<CliMode, CommandTree> = {
             },
             'vlan': null,
         },
-        // --- NOVO: Comandos de config global ---
         'router': {
             'ospf': null
         },
@@ -46,6 +45,9 @@ const commands: Record<CliMode, CommandTree> = {
         },
         'access-list': null,
         'exit': null,
+        'enable': {
+            'secret': null
+        },
     },
     'config-vlan': {
         'name': null,
@@ -243,12 +245,29 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
         const commandTokens = isNegated ? tokens.slice(1) : tokens;
         const [t0, t1, t2, ...rest] = commandTokens;
 
+        const parseAclRule = (ruleTokens: string[]): { sourceIp: string, sourceWildcard: string } | string => {
+            let [sourceIp, sourceWildcard] = ruleTokens;
+
+            if (!sourceIp) return '% Incomplete command.';
+
+            if (sourceIp.toLowerCase() === 'host') {
+                sourceIp = sourceWildcard;
+                sourceWildcard = '0.0.0.0';
+                if (!sourceIp) return '% Incomplete command.';
+            } else if (sourceIp.toLowerCase() === 'any') {
+                sourceIp = '0.0.0.0';
+                sourceWildcard = '255.255.255.255';
+            } else {
+                sourceWildcard = sourceWildcard || '0.0.0.0';
+            }
+            return { sourceIp, sourceWildcard };
+        };
+
         const updateConfig = (newConfig: Partial<NetworkDeviceData['config']>) => {
             updateDeviceConfig(node.id, { ...device.config, ...newConfig });
         };
 
         if (t0 === 'exit') {
-            // --- ATUALIZADO: Lógica de saída para novos modos ---
             if (['config-if', 'config-subif', 'config-vlan', 'config-router', 'config-std-nacl'].includes(mode)) {
                 setMode('config');
                 setCurrentInterface(null);
@@ -299,6 +318,10 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
             }
             // --- INÍCIO: NOVOS COMANDOS (ROUTER) ---
             if (device.type === 'router') {
+                if ((t0 === 'enable' || t0 === 'en') && t1 === 'secret' && t2) {
+                    updateConfig({ enableSecret: t2 } as any);
+                    return;
+                }
                 if (t0 === 'ip' && t1 === 'route' && t2 && rest[0] && rest[1]) {
                     const [network, subnetMask, nextHop] = [t2, rest[0], rest[1]];
                     const staticRoutes: IStaticRoute[] = JSON.parse(JSON.stringify(device.config?.staticRoutes || []));
@@ -342,27 +365,53 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
 
                     const accessLists: IAccessList[] = JSON.parse(JSON.stringify(device.config?.accessLists || []));
 
-                    if (isNegated) {
-                        // O comando "no access-list <id>" remove a ACL inteira.
+                    if (isNegated && !t2) {
                         const newAcls = accessLists.filter(acl => acl.id !== aclId);
                         if (newAcls.length === accessLists.length) return `% Access list ${aclId} not configured.`;
                         updateConfig({ accessLists: newAcls });
                         return;
                     }
 
-                    // Se houver mais tokens (permit/deny), é um comando de linha única que não deveria estar aqui.
-                    if (t2) {
-                        return '% Incomplete command. Use this command to enter ACL configuration mode.';
+                    let targetAcl = accessLists.find(acl => acl.id === aclId);
+                    if (!targetAcl) {
+                        targetAcl = { id: aclId, rules: [] };
+                        accessLists.push(targetAcl);
                     }
 
-                    // Entrar no modo de sub-configuração da ACL
-                    const existingAcl = accessLists.find(acl => acl.id === aclId);
-                    if (!existingAcl) {
-                        accessLists.push({ id: aclId, rules: [] });
+                    if (!t2) {
                         updateConfig({ accessLists });
+                        setCurrentAclId(aclId);
+                        setMode('config-std-nacl');
+                        return;
                     }
-                    setCurrentAclId(aclId);
-                    setMode('config-std-nacl');
+
+                    const action = t2;
+                    if (action !== 'permit' && action !== 'deny') {
+                        return `% Invalid command. Expecting 'permit' or 'deny'.`;
+                    }
+
+                    const ruleResult = parseAclRule(commandTokens.slice(3));
+
+                    if (typeof ruleResult === 'string') return ruleResult;
+
+                    const { sourceIp, sourceWildcard } = ruleResult;
+
+                    if (isNegated) {
+                        const initialCount = targetAcl.rules.length;
+                        targetAcl.rules = targetAcl.rules.filter(r =>
+                            !(r.action === action && r.sourceIp === sourceIp && r.sourceWildcard === sourceWildcard)
+                        );
+                        if (targetAcl.rules.length === initialCount) return '% Rule not found.';
+                    } else {
+                        targetAcl.rules.push({
+                            id: crypto.randomUUID(),
+                            action: action as 'permit' | 'deny',
+                            sourceIp,
+                            sourceWildcard
+                        });
+                    }
+
+                    updateConfig({ accessLists });
                     return;
                 }
                 if (t0 === 'router' && t1 === 'bgp' && t2) {
@@ -504,44 +553,30 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
                 return `% Invalid command. Expecting 'permit' or 'deny'.`;
             }
 
-            const ruleTokens = isNegated ? commandTokens.slice(1) : commandTokens.slice(1);
-            let [sourceIp, sourceWildcard] = ruleTokens;
+            const ruleTokens = commandTokens.slice(1);
+            const ruleResult = parseAclRule(ruleTokens);
 
-            if (!sourceIp) return '% Incomplete command.';
+            if (typeof ruleResult === 'string') return ruleResult;
 
-            // Tratar palavras-chave 'host' e 'any'
-            if (sourceIp.toLowerCase() === 'host') {
-                sourceIp = sourceWildcard; // O IP vem depois de 'host'
-                sourceWildcard = '0.0.0.0';
-                if (!sourceIp) return '% Incomplete command.';
-            } else if (sourceIp.toLowerCase() === 'any') {
-                sourceIp = '0.0.0.0';
-                sourceWildcard = '255.255.255.255';
-            } else {
-                // Wildcard é opcional, padrão para um host exato se não for fornecido
-                sourceWildcard = sourceWildcard || '0.0.0.0';
-            }
+            const { sourceIp, sourceWildcard } = ruleResult;
 
             const accessLists: IAccessList[] = JSON.parse(JSON.stringify(device.config?.accessLists || []));
             const acl = accessLists.find(a => a.id === currentAclId);
             if (!acl) return "% Internal error: ACL disappeared.";
 
             if (isNegated) {
-                // Remover a regra correspondente
                 const initialRuleCount = acl.rules.length;
                 acl.rules = acl.rules.filter(rule =>
                     !(rule.action === action && rule.sourceIp === sourceIp && rule.sourceWildcard === sourceWildcard)
                 );
                 if (acl.rules.length === initialRuleCount) return `% Rule not found.`;
             } else {
-                // Adicionar a nova regra
-                const newRule: IAclRule = {
+                acl.rules.push({
                     id: crypto.randomUUID(),
                     action: action as 'permit' | 'deny',
                     sourceIp,
                     sourceWildcard
-                };
-                acl.rules.push(newRule);
+                });
             }
             updateConfig({ accessLists });
             return;
