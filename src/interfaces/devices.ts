@@ -44,6 +44,17 @@ export interface IBgpConfig {
     neighbors: IBgpNeighbor[];
 }
 
+export interface ILineConfig {
+    rangeStart?: number;
+    rangeEnd?: number;
+    password?: string;
+    login?: boolean;
+    accessClass?: {
+        aclId: string;
+        direction: 'in' | 'out';
+    };
+}
+
 export interface NetworkDeviceData {
     type: 'switch' | 'router' | 'pc';
     label: string;
@@ -90,6 +101,7 @@ export interface NetworkDeviceData {
         staticRoutes?: IStaticRoute[];
         accessLists?: IAccessList[];
         enableSecret?: string
+        lineVty?: ILineConfig;
         bgp?: IBgpConfig;
     }
 

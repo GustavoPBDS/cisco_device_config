@@ -1,11 +1,11 @@
 import { IChannelGroup } from "@/components/deviceMenus/configsForms/switch-form";
 import { useScenario } from "@/contexts/scenario.context";
-import { IAccessList, IAclRule, IOspfConfig, IStaticRoute, NetworkDeviceData, IPortModes, IBgpConfig, IBgpNeighbor } from "@/interfaces/devices";
+import { IAccessList, IAclRule, IOspfConfig, IStaticRoute, NetworkDeviceData, IPortModes, IBgpConfig, IBgpNeighbor, ILineConfig } from "@/interfaces/devices";
 import { useEffect, useState } from "react";
 import { Node } from "reactflow";
 
 // --- ATUALIZADO: Adicionado novos modos de configuração ---
-type CliMode = 'exec' | 'privileged' | 'config' | 'config-vlan' | 'config-if' | 'config-subif' | 'config-router' | 'config-std-nacl' | 'config-router-bgp';
+type CliMode = 'exec' | 'privileged' | 'config' | 'config-vlan' | 'config-if' | 'config-subif' | 'config-router' | 'config-std-nacl' | 'config-router-bgp' | 'config-line';
 
 type CommandTree = { [key: string]: CommandTree | null };
 
@@ -47,6 +47,9 @@ const commands: Record<CliMode, CommandTree> = {
         'exit': null,
         'enable': {
             'secret': null
+        },
+        'line': {
+            'vty': null
         },
     },
     'config-vlan': {
@@ -116,6 +119,12 @@ const commands: Record<CliMode, CommandTree> = {
     'config-router-bgp': {
         'neighbor': null,
         'exit': null,
+    },
+    'config-line': {
+        'password': null,
+        'login': null,
+        'access-class': null,
+        'exit': null
     }
 }
 
@@ -171,7 +180,8 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
             'config-subif': '(config-subif)#',
             'config-router': '(config-router)#',
             'config-std-nacl': '(config-std-nacl)#',
-            'config-router-bgp': '(config-router-bgp)#'
+            'config-router-bgp': '(config-router-bgp)#',
+            'config-line': '(config-line)#'
         };
         return `${hostname}${modeSymbol[mode]} `;
     }
@@ -267,8 +277,8 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
             updateDeviceConfig(node.id, { ...device.config, ...newConfig });
         };
 
-        if (t0 === 'exit') {
-            if (['config-if', 'config-subif', 'config-vlan', 'config-router', 'config-std-nacl'].includes(mode)) {
+        if (t0 === 'exit' || t0 === 'ex') {
+            if (['config-if', 'config-subif', 'config-vlan', 'config-router', 'config-std-nacl', 'config-line', 'config-router-bgp'].includes(mode)) {
                 setMode('config');
                 setCurrentInterface(null);
                 setCurrentVlanId(null);
@@ -314,6 +324,29 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
             if (t0 === 'hostname' && t1) {
                 setHostname(t1);
                 updateConfig({ hostname: t1 });
+                return;
+            }
+            if (t0 === 'line' && t1 === 'vty') {
+                if (!t2) return '% Incomplete command.';
+
+                const start = parseInt(t2, 10);
+                const end = rest[0] ? parseInt(rest[0], 10) : start;
+
+                if (isNaN(start)) {
+                    return '% Invalid line number';
+                }
+
+                const currentLineConfig = device.config?.lineVty || {};
+
+                updateConfig({
+                    lineVty: {
+                        ...currentLineConfig,
+                        rangeStart: start,
+                        rangeEnd: end
+                    }
+                });
+
+                setMode('config-line');
                 return;
             }
             // --- INÍCIO: NOVOS COMANDOS (ROUTER) ---
@@ -504,8 +537,35 @@ export default function useCiscoCli(node: Node<NetworkDeviceData>) {
                 return '% Invalid interface type and number.';
             }
         }
+        if (mode === 'config-line') {
+            const lineConfig: ILineConfig = { ...device.config?.lineVty };
 
-        // --- NOVO: MODO DE CONFIGURAÇÃO OSPF ---
+            if (t0 === 'password' && t1) {
+                lineConfig.password = isNegated ? undefined : t1;
+                updateConfig({ lineVty: lineConfig });
+                return;
+            }
+
+            if (t0 === 'login') {
+                lineConfig.login = !isNegated;
+                updateConfig({ lineVty: lineConfig });
+                return;
+            }
+
+            if (t0 === 'access-class' && t1 && t2) {
+                if (isNegated) {
+                    lineConfig.accessClass = undefined;
+                } else {
+                    if (t2 !== 'in' && t2 !== 'out') return '% Invalid direction. Use "in" or "out".';
+                    lineConfig.accessClass = {
+                        aclId: t1,
+                        direction: t2
+                    };
+                }
+                updateConfig({ lineVty: lineConfig });
+                return;
+            }
+        }
         if (mode === 'config-router') {
             if (!currentOspfProcessId) return "% Internal error: No OSPF process selected.";
 

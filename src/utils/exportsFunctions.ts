@@ -217,6 +217,33 @@ export const exportRouterConfig = (device: NetworkDeviceData, output: string) =>
             output += `ip route ${route.network} ${route.subnetMask} ${route.nextHop}\n`;
         });
     }
+
+    if (config.lineVty) {
+        const start = config.lineVty.rangeStart ?? 0;
+        const end = config.lineVty.rangeEnd ?? 4;
+
+        output += "!\n";
+        output += `line vty ${start} ${end}\n`;
+
+        if (config.lineVty.password) {
+            output += ` password ${config.lineVty.password}\n`;
+        }
+
+        if (config.lineVty.accessClass) {
+            output += ` access-class ${config.lineVty.accessClass.aclId} ${config.lineVty.accessClass.direction}\n`;
+        }
+
+        if (config.lineVty.login) {
+            output += ` login\n`;
+        }
+        output += "!\n";
+    }
+
+    if (config.enableSecret) {
+        output = `enable secret ${config.enableSecret}\n!\n` + output;
+        //output += `enable secret ${config.enableSecret}\n`; 
+    }
+
     return output;
 };
 
