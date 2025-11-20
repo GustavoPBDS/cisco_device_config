@@ -80,7 +80,7 @@ export default function RouterForm({ node, onClose }: IProps) {
 
     const validateHostname = (value: string) => {
         if (!value) return "Hostname é obrigatório";
-        if (!/^[a-zA-Z0-9-]$/.test(value)) return "Use apenas letras, números e hífens";
+        if (!/^[a-zA-Z0-9-]+$/.test(value)) return "Use apenas letras, números e hífens";
         return "";
     };
 
