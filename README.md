@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Simulador de Redes com Análise de Configuração Assistida por IA
 
-## Getting Started
+Este repositório contém o código-fonte do artefato desenvolvido como Trabalho de Conclusão de Curso (TCC) no Curso Superior de Tecnologia em Telemática do Instituto Federal da Paraíba (IFPB) - Campus Campina Grande.
 
-First, run the development server:
+**Autor:** Gustavo Ponciano Barbosa da Silva  
+**Orientador:** Prof. Danyllo Wagner Albuquerque, DSc.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## 📋 Sobre o Projeto
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Esta aplicação é um simulador de redes de computadores *web-based* que integra modelos de linguagem (LLM) para auxiliar no processo de aprendizagem. O sistema permite a criação de topologias, configuração via GUI e CLI, e oferece um módulo de "Análise Inteligente" que diagnostica erros lógicos e de segurança nas configurações realizadas.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Principais Funcionalidades
+- Criação de topologias via *drag-and-drop*.
+- Configuração síncrona (Interface Gráfica ↔ Linha de Comando).
+- Persistência local automática (via `localforage`).
+- Integração com **Google Gemini** para análise pedagógica de cenários.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🛠️ Tecnologias Utilizadas
 
-## Learn More
+- **Framework:** Next.js (React)
+- **Linguagem:** TypeScript
+- **Estilização:** Tailwind CSS
+- **Visualização:** React Flow
+- **IA:** Google Generative AI SDK
+- **Infraestrutura de Teste:** Hostinger VPS + Nginx
 
-To learn more about Next.js, take a look at the following resources:
+## 🚀 Como Executar Localmente
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Para rodar este projeto na sua máquina, você precisará do [Node.js](https://nodejs.org/) instalado.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. **Clone o repositório:**
+   ```bash
+   git clone https://github.com/SEU-USUARIO/SEU-REPOSITORIO.git
+   cd nome-da-pasta
+   ```
 
-## Deploy on Vercel
+2. **Instale as dependências:**
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+   Usando npm:
+   ```bash
+   npm install
+   npm run dev
+   ```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+   Usando pnpm:
+   ```bash
+   pnpm install
+   pnpm dev
+   ```
+
+   Usando yarn:
+   ```bash
+   yarn install
+   yarn dev
+   ```
+
+3. **Configure as Variáveis de Ambiente:**
+
+   Crie um arquivo chamado `.env.local` na raiz do projeto e adicione sua chave de API do Google Gemini (ou credenciais equivalentes usadas pelo adaptador de LLM do projeto):
+
+   ```env
+   GEMINI_API_KEY=sua_chave_aqui
+   ```
+
+   Observação: consulte o arquivo `src/app/api/analyze-scenario/route.ts` (ou a documentação do projeto) para saber outras variáveis esperadas.
+
+4. **Inicie o servidor de desenvolvimento:**
+
+   ```bash
+   npm run dev
+   # ou pnpm dev
+   # ou yarn dev
+   ```
+
+5. **Acesse a aplicação:**
+
+   Abra `http://localhost:3000` no seu navegador.
+
+## Estrutura do Projeto (resumo)
+
+- `src/app/` — rotas Next.js e componentes de alto nível
+- `src/components/` — componentes React reutilizáveis (GUI, menus, formulários)
+- `src/hooks/` — hooks customizados (ex.: `useCLI.ts`)
+- `src/contexts/` — contextos React (estado do cenário)
+- `src/app/api/analyze-scenario/` — rota API para análise com LLM
+- `src/utils/` — utilitários auxiliares (hashing, exportações, cálculos de IP)
+
+## 🧪 Testes e Validação
+
+Este repositório não inclui uma suíte de testes automatizados por padrão. Para validação rápida local:
+
+- Execute o servidor de desenvolvimento e interaja com a UI para criar topologias e usar o módulo de Análise Inteligente.
+- Verifique os logs do servidor (console) para mensagens relacionadas à integração com a API de IA.
+
+## 🔐 Observações de Segurança
+
+- Não comite chaves de API no repositório. Use sempre arquivos de ambiente (`.env.local`) e verifique `.gitignore`.
+- Em produção, proteja as rotas da API que fazem chamadas ao provedor de IA (rate limiting, autenticação, revisão de payloads).
+
+## 📜 Licença
+
+Este projeto é desenvolvido para fins acadêmicos.
