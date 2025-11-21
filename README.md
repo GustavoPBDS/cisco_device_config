@@ -39,19 +39,16 @@ Para rodar este projeto na sua máquina, você precisará do [Node.js](https://n
    Usando npm:
    ```bash
    npm install
-   npm run dev
    ```
 
    Usando pnpm:
    ```bash
    pnpm install
-   pnpm dev
    ```
 
    Usando yarn:
    ```bash
    yarn install
-   yarn dev
    ```
 
 3. **Configure as Variáveis de Ambiente:**
