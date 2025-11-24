@@ -67,6 +67,8 @@ export default function MenuCLI({ node, onClose }: IProps) {
                             onKeyDown={onKeyDown}
                             className="flex-1 bg-gray-800/80 text-sky-200 outline-none py-1"
                             autoFocus
+                            type="text"
+                            autoComplete="off"
                         />
                     </div>
                 </div>
