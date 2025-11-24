@@ -16,6 +16,9 @@ export default function AnalyzeContainer({ onClose, handleAnalyzeScenario }: IPr
     const { analysisResult: analyze, storeAnalysisResult } = useScenario();
     const [selectedDevice, setSelectedDevice] = useState<string | undefined>();
 
+    if (analyze) {
+        console.log(analyze)
+    }
     const handleAnalyze = async () => {
         if (loadingAnalyze) return toast.warning('O cenário ja está sendo analisado, aguarde alguns instantes...')
         setLoadingAnalyze(true)
