@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-    title: "Cisco Config Generator",
+    title: "Net AI",
     description: "Automate the creation of configuration scripts for Cisco routers and switches. Increase your agility and eliminate syntax errors.",
 };
 
